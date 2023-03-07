@@ -10,12 +10,6 @@ function returnToDashboard()
   SpreadsheetApp.getActive().getSheetByName('Dashboard').activate()
 }
 
-function getUrl()
-{
-  const spreadsheet = SpreadsheetApp.getActive();
-  Logger.log(spreadsheet.getUrl())
-}
-
 function setSheetLinks()
 {
   const spreadsheet = SpreadsheetApp.getActive();
