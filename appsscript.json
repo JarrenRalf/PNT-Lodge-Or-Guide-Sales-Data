@@ -1,0 +1,38 @@
+{
+  "timeZone": "America/Vancouver",
+  "dependencies": {
+  },
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "sheets": {
+    "macros": [{
+      "menuName": "addCustomer",
+      "functionName": "addCustomer",
+      "defaultShortcut": "Ctrl+Alt+Shift+1"
+    }, {
+      "menuName": "Untitled Macro",
+      "functionName": "UntitledMacro"
+    }, {
+      "menuName": "Untitled Macro 1",
+      "functionName": "UntitledMacro1"
+    }, {
+      "menuName": "Create Chart of Sales Data",
+      "functionName": "CreateChartofSalesData"
+    }, {
+      "menuName": "Create Chart for Sales Data On Own Tab",
+      "functionName": "CreateChartforSalesDataOnOwnTab"
+    }, {
+      "menuName": "updatSalesDataWithPrompt",
+      "functionName": "updatSalesDataWithPrompt",
+      "defaultShortcut": "Ctrl+Alt+Shift+5"
+    }, {
+      "menuName": "updateCustomersSalesData",
+      "functionName": "updateCustomersSalesData",
+      "defaultShortcut": "Ctrl+Alt+Shift+3"
+    }, {
+      "menuName": "createChart",
+      "functionName": "createChart",
+      "defaultShortcut": "Ctrl+Alt+Shift+8"
+    }]
+  }
+}
