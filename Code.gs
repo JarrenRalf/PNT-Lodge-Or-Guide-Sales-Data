@@ -66,7 +66,7 @@ function addNewCustomer()
               ui.alert('Customer is already in the list.')
             else
             {
-              const customerSheetList = SpreadsheetApp.openById('1BWkaRlqjCt7lMCHCiA0KNl_8jG6sDGg06j7lW9Q-NqY').getSheetByName('Customer List');
+              const customerSheetList = SpreadsheetApp.openById('1xKw4GAtNbAsTEodCDmCMbPCbXUlK9OHv0rt5gYzqx9c').getSheetByName('Customer List');
               const customerList = customerSheetList.getSheetValues(2, 1, customerSheetList.getLastRow() - 1, 2);
               const numCustomers = customerList.push([customerNumber, customerName])
               customerSheetList.getRange(2, 1, numCustomers, 2).setValues(customerList.sort((a, b) => (a[0] > b[0]) ? 1 : (a[0] < b[0]) ? -1 : 0))
@@ -322,7 +322,7 @@ function deleteSelectedCustomers()
   const spreadsheet = SpreadsheetApp.getActive();
   const customerListSheet = spreadsheet.getSheetByName('Customer List');
   const customerList = customerListSheet.getSheetValues(3, 1, customerListSheet.getLastRow() - 2, 3);
-  const customerListSheet_LodgeAndCharterSS = SpreadsheetApp.openById('1BWkaRlqjCt7lMCHCiA0KNl_8jG6sDGg06j7lW9Q-NqY').getSheetByName('Customer List')
+  const customerListSheet_LodgeAndCharterSS = SpreadsheetApp.openById('1xKw4GAtNbAsTEodCDmCMbPCbXUlK9OHv0rt5gYzqx9c').getSheetByName('Customer List')
   const customerList_LodgeAndCharterSS = customerListSheet_LodgeAndCharterSS.getSheetValues(2, 1, customerListSheet_LodgeAndCharterSS.getLastRow() - 1, 2);
   var customerIndex, sheetName, sheetNameSplit;
 
@@ -747,10 +747,9 @@ function updateAllCustomersSalesData(spreadsheet)
   const yearlySales = range.setNumberFormat('$#,##0.00').setValues(salesTotals).activate().offset(-1, 0, 1, numYears).getDisplayValues()[0];
   const annualSalesData = [];
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   if (spreadsheet.getName().split(' ', 1)[0] !== 'CHARTER')
   {
-    var lodgeSalesYearlyData = SpreadsheetApp.openById('1czn_JgE9V3Ie3aIr69AQLuCBpKYhjHIyj4jMrDZK9Cc').getSheetByName('Sales Data').getDataRange().getDisplayValues();
+    var lodgeSalesYearlyData = SpreadsheetApp.openById('1o8BB1RWkxK1uo81tBjuxGc3VWArvCdhaBctQDssPDJ0').getSheetByName('Sales Data').getDataRange().getDisplayValues();
     lodgeSalesYearlyData.shift()
     lodgeSalesYearlyData.shift()
     charterGuideSalesYearlyData.reverse()
@@ -762,7 +761,7 @@ function updateAllCustomersSalesData(spreadsheet)
   }
   else
   {
-    var charterGuideSalesYearlyData = SpreadsheetApp.openById('1Hku1QJFuQXMkpXNW5HA9jSx_TyhsumRvjm1Wyp5QBRk').getSheetByName('Sales Data').getDataRange().getDisplayValues();
+    var charterGuideSalesYearlyData = SpreadsheetApp.openById('1kKS6yazOEtCsH-QCLClUI_6NU47wHfRb8CIs-UTZa1U').getSheetByName('Sales Data').getDataRange().getDisplayValues();
     charterGuideSalesYearlyData.shift()
     charterGuideSalesYearlyData.shift()
     charterGuideSalesYearlyData.reverse()
@@ -773,7 +772,7 @@ function updateAllCustomersSalesData(spreadsheet)
     }).reverse()
   }
 
-  SpreadsheetApp.openById('1BWkaRlqjCt7lMCHCiA0KNl_8jG6sDGg06j7lW9Q-NqY').getSheetByName('Annual Sales Data').getRange(4, 1, numYears, 4).setValues(annualSalesData.reverse())
+  SpreadsheetApp.openById('1xKw4GAtNbAsTEodCDmCMbPCbXUlK9OHv0rt5gYzqx9c').getSheetByName('Annual Sales Data').getRange(4, 1, numYears, 4).setValues(annualSalesData.reverse())
   spreadsheet.getSheetByName('Sales Data').getRange(3, 1, numYears, 2).setNumberFormats(chartDataFormat).setValues(annualChartData)
 
   var triggerDate = new Date(new Date().getTime() + 30000); // Set a trigger for a point in the future
