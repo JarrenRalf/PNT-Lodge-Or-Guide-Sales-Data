@@ -69,32 +69,58 @@ function addNewCustomer()
               const customerSheetList = SpreadsheetApp.openById('1xKw4GAtNbAsTEodCDmCMbPCbXUlK9OHv0rt5gYzqx9c').getSheetByName('Customer List');
               const customerList = customerSheetList.getSheetValues(2, 1, customerSheetList.getLastRow() - 1, 2);
               const numCustomers = customerList.push([customerNumber, customerName])
-              customerSheetList.getRange(2, 1, numCustomers, 2).setValues(customerList.sort((a, b) => (a[0] > b[0]) ? 1 : (a[0] < b[0]) ? -1 : 0))
+              customerSheetList.getRange(2, 1, numCustomers, 2).setValues(customerList.sort((a, b) => (a[0] > b[0]) ? 1 : (a[0] < b[0]) ? -1 : 0)) // Sort the customers by CUST #
               
               numRows++;
               const range = customerSheet.appendRow([customerNumber, customerName, sheetName]).getRange(3, 1, numRows, 3)
-              const values = range.getValues().sort((a, b) => (a[1] > b[1]) ? 1 : (a[1] < b[1]) ? -1 : 0)
+              const values = range.getValues().sort((a, b) => (a[1] > b[1]) ? 1 : (a[1] < b[1]) ? -1 : 0) // Sort the customers alphabetically by name
               range.setValues(values)
-              const previousCustomerNum = values[values.findIndex(custNum => custNum[0] === customerNumber) - 1][0];
-              const sheetNames = spreadsheet.getSheets().map(sht => sht.getSheetName().split(' - '))
 
-              // Figure out what the index should be for the customer data sheet
-              for (var i = 4; i < sheetNames.length; i++)
-                if (sheetNames[i][1] === previousCustomerNum)
-                  break;
+              // Once list is sorted, find new customer, then identify the customer that proceeds the new one, we will use this insert the customer sheets into the correct location
+              const newCustIndex = values.findIndex(custNum => custNum[0] === customerNumber)
 
-              const customerDataSheet = spreadsheet.insertSheet(sheetName, (i + 2), {template: spreadsheet.getSheetByName('Template')})
-              
-              const id_chart = createChart_NewCustomer(customerName, sheetName, customerDataSheet, spreadsheet)
-              const lastRow = dashboard.getLastRow() + 1
+              if (newCustIndex !== 0) // If the new customer is not alphabetically first in the list
+              {
+                const previousCustomerNum = values[newCustIndex - 1][0]; 
+                const sheetNames = spreadsheet.getSheets().map(sht => sht.getSheetName().split(' - '))
+
+                // Figure out what the index should be for the customer data sheet
+                for (var i = 4; i < sheetNames.length; i++)
+                  if (sheetNames[i][1] === previousCustomerNum)
+                    break;
+              }
+              else // The new customer is first
+                var i = 2;
+
+              const customerDataSheet = spreadsheet.insertSheet(sheetName, (i + 2), {template: spreadsheet.getSheetByName('Template')}).showSheet()
+              const id_chart = createChart_NewCustomer(customerName, sheetName, customerDataSheet, spreadsheet) // Store ID so that we can hyperlink to the chart from Dashboard
+              const lastRow = dashboard.getLastRow() + 1;
               const numCols = dashboard.getLastColumn();
+              const sheetLinks = dashboard.getRange(4, 1, lastRow - 4, 2).getRichTextValues()
+              const formulas_CustomerTotals = dashboard.getRange(4, 4, lastRow - 4).getFormulas()
+              dashboard.appendRow(['', '', customerName, ...new Array(numCols - 3).fill('')])
+              const dashboardValues = dashboard.getSheetValues(4, 1, lastRow - 3, numCols).sort((a, b) => (a[2] > b[2]) ? 1 : (a[2] < b[2]) ? -1 : 0) // Sort customer alphabetically
 
-              dashboard.appendRow(['', '', customerName, '=SUM(E' + lastRow + ':O' + lastRow + ')', ...new Array(numCols - 4).fill('')])
-              dashboard.getRange(lastRow, 1, 1, 2)
-                .setRichTextValues([[SpreadsheetApp.newRichTextValue().setText(customerNumber).setLinkUrl('#gid=' + customerDataSheet.getSheetId()).build(), 
-                                     SpreadsheetApp.newRichTextValue().setText(customerNumber).setLinkUrl('#gid=' + id_chart).build()]])
-              dashboard.getRange(4, 1, lastRow - 3, numCols).activate()
-              spreadsheet.toast('Select Data => Sort range => Advanced range sorting options => Then select Sort by Column C => Click Sort', 'Sort Dashboard', 120)
+              formulas_CustomerTotals.splice(newCustIndex, 0, 
+                ['=SUM(E' + (newCustIndex + 4) + ':' + dashboard.getRange(1, numCols).getA1Notation()[0] + (newCustIndex + 4) + ')']
+              )
+
+              for (var i = newCustIndex; i < formulas_CustomerTotals.length; i++) // The formulas need to be adjusted slightl, increase by one below the new customer
+                formulas_CustomerTotals[i][0] = formulas_CustomerTotals[i][0].replaceAll(/\d+/g, i + 4)
+
+              sheetLinks.splice(newCustIndex, 0, // Set hyperlinks for the new sheet
+                [SpreadsheetApp.newRichTextValue().setText(customerNumber).setLinkUrl('#gid=' + customerDataSheet.getSheetId()).build(), 
+                 SpreadsheetApp.newRichTextValue().setText(customerNumber).setLinkUrl('#gid=' + id_chart).build()]
+              )
+
+              const formulaRange_YearlyTotals = dashboard.getRange(4, 1, lastRow - 3, numCols).setValues(dashboardValues) // Set the customer names and sales values
+                .offset(0, 0, lastRow - 3, 2).setRichTextValues(sheetLinks)        // Set the hyperlinked sheet links
+                .offset(0, 3, lastRow - 3, 1).setFormulas(formulas_CustomerTotals) // Set the customer totals formulas
+                .offset(-1, 0, 1, numCols - 3); // The range of the yearly sales totals; Their formulas need tp be updated because we have an extra row
+
+              const formulas_YearlyTotals = [formulaRange_YearlyTotals.getFormulas()[0].map(formula => formula.toString().substring(0, 9) + lastRow.toString() + ')')]
+              formulaRange_YearlyTotals.setFormulas(formulas_YearlyTotals).offset(1, -3, lastRow - 3, numCols) // Set new formulas because we have a new customer and they need to extend one more row
+              dashboard.getRange(newCustIndex + 4, 1, 1, 2).activate() // Move to the sheet links
             }
           }
         }
@@ -122,7 +148,7 @@ function configureYearlyCustomerItemData(values, fileName, doesPreviousSheetExis
   values.shift()
   values.pop() // Remove the final row which contains descriptive stats
   const preData = values.filter(d => accounts.includes(d[0].toString().trim()));
-  const [data, ranges] = reformatData(preData)
+  const [data, ranges] = reformatData_YearlyCustomerItemData(preData)
   const yearRange = new Array(currentYear - 2012 + 1).fill('').map((_, y) => (currentYear - y).toString()).reverse()
   var year = yearRange.find(p => p == fileName) // The year that the data is representing
 
@@ -147,17 +173,28 @@ function configureYearlyCustomerItemData(values, fileName, doesPreviousSheetExis
           indexAdjustment--;
           spreadsheet.deleteSheet(previousSheet)
         }
-        
+
         SpreadsheetApp.flush();
-        const newSheet = spreadsheet.insertSheet(year, sheets.length - year + indexAdjustment)
+        const newSheet = spreadsheet.insertSheet(year, sheets.length + indexAdjustment - year)
           .setColumnWidth(1, 66).setColumnWidth(2, 300).setColumnWidth(3, 150).setColumnWidth(4, 300).setColumnWidths(5, 2, 75);
         SpreadsheetApp.flush();
         const lastRow = data.unshift(['Customer', 'Customer Name', 'Item Number', 'Item Description', 'Quantity', 'Amount']);
         newSheet.deleteColumns(7, 20)
-        newSheet.setFrozenRows(1)
+        newSheet.setTabColor('#a64d79').setFrozenRows(1)
+        newSheet.protect()
         newSheet.getRange(1, 1, 1, numCols).setFontSize(11).setFontWeight('bold').setBackground('#c0c0c0')
           .offset(0, 0, lastRow, numCols).setHorizontalAlignments(new Array(lastRow).fill(['left', 'left', 'left', 'left', 'right', 'right'])).setNumberFormat('@').setValues(data)
         newSheet.getRangeList(ranges).setBorder(true, false, true, false, false, false).setBackground('#c0c0c0').setFontWeight('bold')
+
+        const dashboard = spreadsheet.getSheetByName('Dashboard')
+
+        if (currentYear > Number(dashboard.getRange('E2').getValue()))
+        {
+          const dashboard_lastRow = dashboard.getLastRow();
+          dashboard.insertColumnBefore(5).getRange(2, 5, 2, 1).setValues([[currentYear], ['=SUM(E4:E' + dashboard_lastRow + ')']])
+          const grandTotalRange = dashboard.getRange(4, 4, dashboard_lastRow - 3)
+          grandTotalRange.setFormulas(grandTotalRange.getFormulas().map(formula => [formula[0].replace('F', 'E')]))
+        }
 
         updateAllCustomersSalesData(spreadsheet)
       }
@@ -178,38 +215,37 @@ function configureYearlyCustomerItemData(values, fileName, doesPreviousSheetExis
     const numCols = 6;
     const sheets = spreadsheet.getSheets();
     const previousSheet = sheets.find(sheet => sheet.getSheetName() == year)
-    var indexAdjustment = 2010
+    var indexAdjustment = 2011
 
     if (doesPreviousSheetExist)
     {
       indexAdjustment--;
       spreadsheet.deleteSheet(previousSheet)
     }
-    else
-      previousSheet.setName('NewTab')
     
     SpreadsheetApp.flush();
-    const newSheet = spreadsheet.insertSheet(year, sheets.length - year + indexAdjustment)
+    const newSheet = spreadsheet.insertSheet(year, sheets.length + indexAdjustment - year)
       .setColumnWidth(1, 66).setColumnWidth(2, 300).setColumnWidth(3, 150).setColumnWidth(4, 300).setColumnWidths(5, 2, 75);
     SpreadsheetApp.flush();
     const lastRow = data.unshift(['Customer', 'Customer Name', 'Item Number', 'Item Description', 'Quantity', 'Amount']);
     newSheet.deleteColumns(7, 20)
-    newSheet.setFrozenRows(1)
+    newSheet.setTabColor('#a64d79').setFrozenRows(1)
+    newSheet.protect()
     newSheet.getRange(1, 1, 1, numCols).setFontSize(11).setFontWeight('bold').setBackground('#c0c0c0')
       .offset(0, 0, lastRow, numCols).setHorizontalAlignments(new Array(lastRow).fill(['left', 'left', 'left', 'left', 'right', 'right'])).setNumberFormat('@').setValues(data)
     newSheet.getRangeList(ranges).setBorder(true, false, true, false, false, false).setBackground('#c0c0c0').setFontWeight('bold')
 
+    const dashboard = spreadsheet.getSheetByName('Dashboard')
+
+    if (currentYear > Number(dashboard.getRange('E2').getValue()))
+    {
+      const dashboard_lastRow = dashboard.getLastRow();
+      dashboard.insertColumnBefore(5).getRange(2, 5, 2, 1).setValues([[currentYear], ['=SUM(E4:E' + dashboard_lastRow + ')']])
+      const grandTotalRange = dashboard.getRange(4, 4, dashboard_lastRow - 3)
+      grandTotalRange.setFormulas(grandTotalRange.getFormulas().map(formula => [formula[0].replace('F', 'E')]))
+    }
+
     updateAllCustomersSalesData(spreadsheet)
-  }
-
-  const dashboard = spreadsheet.getSheetByName('Dashboard')
-
-  if (currentYear > Number(dashboard.getRange('E2').getValue()))
-  {
-    const dashboard_lastRow = dashboard.getLastRow();
-    dashboard.insertColumnBefore(5).getRange(2, 5, 2, 1).setValues([[currentYear], ['=SUM(E4:E' + dashboard_lastRow + ')']])
-    const grandTotalRange = dashboard.getRange(4, 4, dashboard_lastRow - 3)
-    grandTotalRange.setFormulas(grandTotalRange.getFormulas().map(formula => [formula[0].replace('F', 'E')]))
   }
 }
 
@@ -276,9 +312,12 @@ function createChart_NewCustomer(customerName, sheetName, customerDataSheet, spr
   const numRows = chartData.length;
   const sheetName_Split = sheetName.split(' - ')
   
-  const chartDataRng = customerDataSheet.getRange(3, 5, numRows, 2).setBackground('white').setBorder(false, false, false, false, false, false).setFontWeight('normal')
-    .setHorizontalAlignments(new Array(numRows).fill(['center', 'right'])).setNumberFormats(new Array(numRows).fill(['@', '$#,##0.00'])).setValues(chartData)
-  customerDataSheet.getRange(1, 1, 1, 4).setValues([[sheetName_Split[1], customerName, 'Total:', '=SUM(' + customerDataSheet.getRange(3, 6, numRows).getA1Notation() + ')']])
+  const chartDataRng = customerDataSheet.setTabColor('#38761d').getRange(3, 5, numRows, 2).setBackground('white').setBorder(false, false, false, false, false, false)
+    .setFontWeight('normal').setHorizontalAlignments(new Array(numRows).fill(['center', 'right'])).setNumberFormats(new Array(numRows).fill(['@', '$#,##0.00'])).setValues(chartData)
+  customerDataSheet.setColumnWidth(5, 75).setColumnWidth(6, 100)
+    .getRange(1, 1, 1, 5).setValues([[sheetName_Split[1], customerName, 'Total:', '=SUM(' + customerDataSheet.getRange(3, 6, numRows).getA1Notation() + ')', 'Chart Data']])
+    .offset(0, 4, 1, 2).merge().setBorder(false, true, true, false, null, null)
+    .offset(1, 0, 1, 2).setHorizontalAlignments([['center', 'right']]).setValues([['Year', 'Amount']])
 
   const chart = customerDataSheet.newChart()
     .asColumnChart()
@@ -308,7 +347,7 @@ function createChart_NewCustomer(customerName, sheetName, customerDataSheet, spr
 
   customerDataSheet.insertChart(chart);
   
-  return spreadsheet.moveChartToObjectSheet(chart).activate().setName(sheetName_Split[0] + ' CHART - ' + sheetName_Split[1]).getSheetId();
+  return spreadsheet.moveChartToObjectSheet(chart).activate().setName(sheetName_Split[0] + ' CHART - ' + sheetName_Split[1]).setTabColor('#f1c232').getSheetId();
 }
 
 /**
@@ -411,7 +450,7 @@ function processImportedData(e)
             spreadsheet.deleteSheet(sheets[sheet]) // Delete the new sheet that was created
 
           if (info[isYearlyCustomerItemData])
-            configureYearlyCustomerItemData(values, doesPreviousSheetExist, spreadsheet)
+            configureYearlyCustomerItemData(values, fileName, doesPreviousSheetExist, spreadsheet)
 
           spreadsheet.toast('', 'Import Complete.')
           break;
@@ -431,6 +470,55 @@ function processImportedData(e)
   }
 }
 
+/**
+ * This function protects all sheets expect for the search pages on the Lodge, Charter, & Guide data spreadsheet, for those, just the relevant cells in the header are protected.
+ * 
+ * @author Jarren Ralf
+ */
+function protectAllSheets()
+{
+  const users = ['triteswarehouse@gmail.com', 'scottnakashima10@gmail.com', 'scottnakashima@hotmail.com', 'pntparksville@gmail.com', 'derykdawg@gmail.com'];
+  var sheetName, chartSheet = SpreadsheetApp.SheetType.OBJECT;
+
+  SpreadsheetApp.getActive().getSheets().map(sheet => {
+    if (sheet.getType() !== chartSheet)
+    {
+      sheetName = sheet.getSheetName();
+      Logger.log(sheetName)
+
+      if (sheetName !== 'Search for Item Quantity or Amount ($)')
+      {
+        if (sheetName !==  'Search for Invoice #s')
+          sheet.protect().addEditor('jarrencralf@gmail.com').removeEditors(users);
+        else
+          sheet.protect().addEditor('jarrencralf@gmail.com').removeEditors(users).setUnprotectedRanges([sheet.getRange(1, 1, 2)]);
+      }
+      else
+        sheet.protect().addEditor('jarrencralf@gmail.com').removeEditors(users).setUnprotectedRanges([sheet.getRange(1, 1, 3), sheet.getRange(2, 5, 2), sheet.getRange(2, 9, 2), sheet.getRange(3, 11)]);
+      }
+  })
+}
+
+/**
+ * This function removes all of the protections on each sheet.
+ * 
+ * @author Jarren Ralf
+ */
+function removeProtectionOnAllSheets()
+{
+  var chartSheet = SpreadsheetApp.SheetType.OBJECT;
+
+  SpreadsheetApp.getActive().getSheets().map(sheet => {
+    if (sheet.getType() !== chartSheet)
+      sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET)[0].remove()
+  })
+}
+
+/**
+ * This function returns the user to the Dashboard sheet.
+ * 
+ * @author Jarren Ralf
+ */
 function returnToDashboard()
 {
   SpreadsheetApp.getActive().getSheetByName('Dashboard').activate()
@@ -443,7 +531,7 @@ function returnToDashboard()
  * @return {String[][], String[]} The reformatted data and a list of ranges to create a RangeList object
  * @author Jarren Ralf
  */
-function reformatData(preData)
+function reformatData_YearlyCustomerItemData(preData)
 {
   var qty = 0, amount = 0, row = 0, uniqueCustomerList = [], ranges = [], formattedData = [];
 
@@ -489,25 +577,13 @@ function reformatData(preData)
  */
 function setCustomerNamesOnDashboard()
 {
-  const sheets = SpreadsheetApp.getActive().getSheets();
-  const dashboard = sheets.shift()
-  const sheetNames = sheets.map(sheet => sheet.getSheetName().split(' - '))
-  const numRows = dashboard.getLastRow() - 3
-
-  const sheetLinks = dashboard.getSheetValues(4, 1, numRows, 1).map(custNum => {
-    for (var s = 3; s < sheetNames.length; s++)
-    {
-      if (custNum[0] === sheetNames[s][1])
-      {
-        return [
-          SpreadsheetApp.newRichTextValue().setText(custNum[0]).setLinkUrl('#gid=' + sheets[s    ].getSheetId()).build(),
-          SpreadsheetApp.newRichTextValue().setText(custNum[0]).setLinkUrl('#gid=' + sheets[s + 1].getSheetId()).build() 
-        ]
-      }
-    }
-  })
-
-  dashboard.getRange(4, 1, numRows, 2).setRichTextValues(sheetLinks)
+  const spreadsheet = SpreadsheetApp.getActive()
+  const dashboard = spreadsheet.getSheetByName('Dashboard')
+  const customerListSheet = spreadsheet.getSheetByName('Customer List')
+  const customerList = customerListSheet.getSheetValues(3, 1, customerListSheet.getLastRow() - 2, 2)
+  const numRows = dashboard.getLastRow() - 3;
+  const customerNames = dashboard.getSheetValues(4, 2, numRows, 1).map(acctNum => [customerList.find(customer => customer[0] == acctNum[0])[1]])
+  dashboard.getRange(4, 3, numRows, 1).setValues(customerNames)
 }
 
 /**
@@ -536,6 +612,22 @@ function setSheetLinksOnDashboard()
   })
 
   dashboard.getRange(4, 1, numRows, 2).setRichTextValues(sheetLinks)
+}
+
+/**
+ * This function sets all of the tab colours so that the customer data tabs and charts are alternating colours for quick differentiation.
+ * 
+ * @author Jarren Ralf
+ */
+function setTabColours()
+{
+  var sheetNameSplit;
+
+  SpreadsheetApp.getActive().getSheets().map(sheet => {
+    sheetNameSplit = sheet.getSheetName().split(' - ');
+    if (sheetNameSplit.length === 2)
+      (sheetNameSplit[0].split(' ').pop() !== 'CHART') ? sheet.setTabColor('#38761d') : sheet.setTabColor('#f1c232');
+  })
 }
 
 /**
@@ -633,6 +725,72 @@ function updateAllCharts()
 
     if (sheet === numCustomerSheets) // The total number of spreadsheets have been created
       setSheetLinksOnDashboard()
+
+    const salesDataSheet = spreadsheet.getSheetByName('Sales Data');
+    const spreadsheetName = spreadsheet.getName();
+    ss.deleteSheet(ss.getSheetByName('ANNUAL ' + spreadsheetName + ' CHART')) // Delete previous sales chart
+
+    const annualSalesChart = salesDataSheet.newChart()
+      .asColumnChart()
+      .addRange(salesDataSheet.getRange(4, 1, numYears, 2))
+      .setNumHeaders(0)
+      .setXAxisTitle('Year')
+      .setYAxisTitle('Sales Total')
+      .setTransposeRowsAndColumns(false)
+      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
+      .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.IGNORE_BOTH)
+      .setOption('title', 'ANNUAL ' + spreadsheetName + ' DATA')
+      .setOption('subtitle', 'Total: ' + salesDataSheet.getRange(2, 2).getDisplayValue())
+      .setOption('isStacked', 'false')
+      .setOption('bubble.stroke', '#000000')
+      .setOption('textStyle.color', '#000000')
+      .setOption('useFirstColumnAsDomain', true)
+      .setOption('titleTextStyle.color', '#757575')
+      .setOption('legend.textStyle.color', '#1a1a1a')
+      .setOption('subtitleTextStyle.color', '#999999')
+      .setOption('series', {0: {hasAnnotations: true, dataLabel: 'value'}})
+      .setOption('trendlines', {0: {lineWidth: 4, type: 'linear', color: '#6aa84f'}})
+      .setOption('hAxis', {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}})
+      .setOption('annotations', {domain: {textStyle: {color: '#808080'}}, total: {textStyle : {color: '#808080'}}})
+      .setOption('vAxes', {0: {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}, minorGridlines: {count: 2}}})
+      .setPosition(1, 1, 0, 0)
+      .build();
+
+    salesDataSheet.insertChart(annualSalesChart);
+    spreadsheet.moveChartToObjectSheet(annualSalesChart).activate().setName('ANNUAL ' + spreadsheetName + ' CHART')
+
+    const ss = SpreadsheetApp.openById('1xKw4GAtNbAsTEodCDmCMbPCbXUlK9OHv0rt5gYzqx9c') // The Lodge, Charter, & Guide Data spreadsheet
+    const annualSalesDataSheet = ss.getSheetByName('Annual Sales Data');
+    ss.deleteSheet(ss.getSheetByName('ANNUAL SALES CHART')) // Delete previous sales chart
+
+    const annualSalesChart_BOTH = annualSalesDataSheet.newChart()
+      .asColumnChart()
+      .addRange(annualSalesDataSheet.getRange(4, 1, numYears, 2))
+      .setNumHeaders(0)
+      .setXAxisTitle('Year')
+      .setYAxisTitle('Sales Total')
+      .setTransposeRowsAndColumns(false)
+      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
+      .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.IGNORE_BOTH)
+      .setOption('title', 'Annual Sales Data')
+      .setOption('subtitle', 'Total: ' + annualSalesDataSheet.getRange(2, 2).getDisplayValue())
+      .setOption('isStacked', 'false')
+      .setOption('bubble.stroke', '#000000')
+      .setOption('textStyle.color', '#000000')
+      .setOption('useFirstColumnAsDomain', true)
+      .setOption('titleTextStyle.color', '#757575')
+      .setOption('legend.textStyle.color', '#1a1a1a')
+      .setOption('subtitleTextStyle.color', '#999999')
+      .setOption('series', {0: {hasAnnotations: true, dataLabel: 'value'}})
+      .setOption('trendlines', {0: {lineWidth: 4, type: 'linear', color: '#6aa84f'}})
+      .setOption('hAxis', {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}})
+      .setOption('annotations', {domain: {textStyle: {color: '#808080'}}, total: {textStyle : {color: '#808080'}}})
+      .setOption('vAxes', {0: {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}, minorGridlines: {count: 2}}})
+      .setPosition(1, 1, 0, 0)
+      .build();
+
+    annualSalesDataSheet.insertChart(annualSalesChart_BOTH);
+    spreadsheet.moveChartToObjectSheet(annualSalesChart_BOTH).activate().setName('ANNUAL SALES CHART')
   }
   catch (err)
   {
@@ -680,7 +838,7 @@ function updateAllCustomersSalesData(spreadsheet)
   const chartDataFormat = new Array(numYears).fill().map(() => ['@', '$#,##0.00']);
   const chartDataH_Alignment = new Array(numYears).fill().map(() => ['center', 'right']);
   var sheet, data, numItems = 0, chartData = [], index = 0, allYearsData, salesData, hAlignments = [], numberFormats = [], 
-    yearRange = [], yearRange_RowNum = 3, totalRange = [], totalRange_RowNum = 0;
+    yearRange = [], yearRange_RowNum = 3, totalRange = [], totalRange_RowNum = 1;
 
   const years = new Array(numYears).fill('').map((_, y) => (currentYear - y).toString()).map(year_y => {
     chartData.push([year_y, ''])
@@ -706,10 +864,10 @@ function updateAllCustomersSalesData(spreadsheet)
           data.unshift(['', '', '', '', '01 Jan ' + currentYear, currentDate]) : 
           data.unshift(['', '', '', '', '01 Jan ' + (currentYear - y), '31 Dec ' + (currentYear - y)])
         data.push(['', '', '', '', '', '']);
-        totalRange_RowNum += (totalRange_RowNum == 0) ? numItems + 1 : numItems;
+        totalRange_RowNum += (totalRange_RowNum == 0) ? numItems + 1 : numItems + 2;
         totalRange.push('C' + totalRange_RowNum + ':D' + totalRange_RowNum)
         yearRange.push('C' + yearRange_RowNum + ':D' + yearRange_RowNum)
-        yearRange_RowNum += numItems;
+        yearRange_RowNum += numItems + 2;
       }
       else
       {
@@ -741,39 +899,41 @@ function updateAllCustomersSalesData(spreadsheet)
     hAlignments.length = 0;
     numberFormats.length = 0;
     yearRange_RowNum = 3;
-    totalRange_RowNum = 0;
+    totalRange_RowNum = 1;
   }
 
-  const yearlySales = range.setNumberFormat('$#,##0.00').setValues(salesTotals).activate().offset(-1, 0, 1, numYears).getDisplayValues()[0];
+  const yearlySales = range.setNumberFormat('$#,##0.00').setValues(salesTotals).activate().offset(-1, 0, 1, numYears).getDisplayValues()[0].reverse();
   const annualSalesData = [];
 
   if (spreadsheet.getName().split(' ', 1)[0] !== 'CHARTER')
   {
-    var lodgeSalesYearlyData = SpreadsheetApp.openById('1o8BB1RWkxK1uo81tBjuxGc3VWArvCdhaBctQDssPDJ0').getSheetByName('Sales Data').getDataRange().getDisplayValues();
-    lodgeSalesYearlyData.shift()
-    lodgeSalesYearlyData.shift()
-    charterGuideSalesYearlyData.reverse()
-
-    var annualChartData = yearlySales.map((total, y) => {
-      annualSalesData.push([(currentYear - y).toString(), '=SUM(C' + (numYears + 3 - y) + ':D' + (numYears + 3 - y) + ')', total, lodgeSalesYearlyData[y][1]])
-      return [(currentYear - y).toString(), total]
-    }).reverse();
-  }
-  else
-  {
     var charterGuideSalesYearlyData = SpreadsheetApp.openById('1kKS6yazOEtCsH-QCLClUI_6NU47wHfRb8CIs-UTZa1U').getSheetByName('Sales Data').getDataRange().getDisplayValues();
     charterGuideSalesYearlyData.shift()
     charterGuideSalesYearlyData.shift()
-    charterGuideSalesYearlyData.reverse()
+    charterGuideSalesYearlyData.shift()
 
     var annualChartData = yearlySales.map((total, y) => {
-      annualSalesData.push([(currentYear - y).toString(), '=SUM(C' + (numYears + 3 - y) + ':D' + (numYears + 3 - y) + ')', charterGuideSalesYearlyData[y][1], total])
-      return [(currentYear - y).toString(), total]
-    }).reverse()
+      annualSalesData.push([(2012 + y).toString(), '=SUM(C' + (y + 4) + ':D' + (y + 4) + ')', 
+        total, (charterGuideSalesYearlyData[y] != null) ? charterGuideSalesYearlyData[y][1] : '$0.00'])
+      return [(2012 + y).toString(), total]
+    });
+  }
+  else
+  {
+    var lodgeSalesYearlyData = SpreadsheetApp.openById('1o8BB1RWkxK1uo81tBjuxGc3VWArvCdhaBctQDssPDJ0').getSheetByName('Sales Data').getDataRange().getDisplayValues();
+    lodgeSalesYearlyData.shift()
+    lodgeSalesYearlyData.shift()
+    lodgeSalesYearlyData.shift()
+
+    var annualChartData = yearlySales.map((total, y) => {
+      annualSalesData.push([(2012 + y).toString(), '=SUM(C' + (y + 4) + ':D' + (y + 4) + ')', 
+        (lodgeSalesYearlyData[y] != null) ? lodgeSalesYearlyData[y][1] : '$0.00', total])
+      return [(2012 + y).toString(), total]
+    })
   }
 
-  SpreadsheetApp.openById('1xKw4GAtNbAsTEodCDmCMbPCbXUlK9OHv0rt5gYzqx9c').getSheetByName('Annual Sales Data').getRange(4, 1, numYears, 4).setValues(annualSalesData.reverse())
-  spreadsheet.getSheetByName('Sales Data').getRange(3, 1, numYears, 2).setNumberFormats(chartDataFormat).setValues(annualChartData)
+  SpreadsheetApp.openById('1xKw4GAtNbAsTEodCDmCMbPCbXUlK9OHv0rt5gYzqx9c').getSheetByName('Annual Sales Data').getRange(4, 1, numYears, 4).setValues(annualSalesData)
+  spreadsheet.getSheetByName('Sales Data').getRange(4, 1, numYears, 2).setNumberFormats(chartDataFormat).setValues(annualChartData)
 
   var triggerDate = new Date(new Date().getTime() + 30000); // Set a trigger for a point in the future
   Logger.log('All of the charts will begin updating at:')

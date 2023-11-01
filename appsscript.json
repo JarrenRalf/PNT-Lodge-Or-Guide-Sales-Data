@@ -30,9 +30,13 @@
       "functionName": "updateCustomersSalesData",
       "defaultShortcut": "Ctrl+Alt+Shift+3"
     }, {
-      "menuName": "createChart",
-      "functionName": "createChart",
-      "defaultShortcut": "Ctrl+Alt+Shift+8"
+      "menuName": "addNewCustomer",
+      "functionName": "addNewCustomer",
+      "defaultShortcut": "Ctrl+Alt+Shift+1"
+    }, {
+      "menuName": "deleteSelectedCustomers",
+      "functionName": "deleteSelectedCustomers",
+      "defaultShortcut": "Ctrl+Alt+Shift+9"
     }]
   }
 }
