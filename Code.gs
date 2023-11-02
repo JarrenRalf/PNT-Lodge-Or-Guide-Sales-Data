@@ -72,7 +72,7 @@ function addNewCustomer()
               customerSheetList.getRange(2, 1, numCustomers, 2).setValues(customerList.sort((a, b) => (a[0] > b[0]) ? 1 : (a[0] < b[0]) ? -1 : 0)) // Sort the customers by CUST #
               
               numRows++;
-              const range = customerSheet.appendRow([customerNumber, customerName, sheetName]).getRange(3, 1, numRows, 3)
+              const range = customerSheet.appendRow([customerNumber, customerName, sheetName]).getRange(3, 1, numRows, 3) // Add the customer to the bottom of the list initially
               const values = range.getValues().sort((a, b) => (a[1] > b[1]) ? 1 : (a[1] < b[1]) ? -1 : 0) // Sort the customers alphabetically by name
               range.setValues(values)
 
@@ -105,7 +105,7 @@ function addNewCustomer()
                 ['=SUM(E' + (newCustIndex + 4) + ':' + dashboard.getRange(1, numCols).getA1Notation()[0] + (newCustIndex + 4) + ')']
               )
 
-              for (var i = newCustIndex; i < formulas_CustomerTotals.length; i++) // The formulas need to be adjusted slightl, increase by one below the new customer
+              for (var i = newCustIndex; i < formulas_CustomerTotals.length; i++) // The formulas need to be adjusted slightly, increase by one below the new customer
                 formulas_CustomerTotals[i][0] = formulas_CustomerTotals[i][0].replaceAll(/\d+/g, i + 4)
 
               sheetLinks.splice(newCustIndex, 0, // Set hyperlinks for the new sheet
@@ -188,11 +188,12 @@ function configureYearlyCustomerItemData(values, fileName, doesPreviousSheetExis
 
         const dashboard = spreadsheet.getSheetByName('Dashboard')
 
-        if (currentYear > Number(dashboard.getRange('E2').getValue()))
+        if (currentYear > Number(dashboard.getRange('E2').getValue())) // The current year is not represented on the Dashboard, so add a column for it and make the relevant changes to formulas
         {
           const dashboard_lastRow = dashboard.getLastRow();
           dashboard.insertColumnBefore(5).getRange(2, 5, 2, 1).setValues([[currentYear], ['=SUM(E4:E' + dashboard_lastRow + ')']])
           const grandTotalRange = dashboard.getRange(4, 4, dashboard_lastRow - 3)
+          dashboard.getRange(1, 5, 1, 2).merge();
           grandTotalRange.setFormulas(grandTotalRange.getFormulas().map(formula => [formula[0].replace('F', 'E')]))
         }
 
@@ -237,11 +238,12 @@ function configureYearlyCustomerItemData(values, fileName, doesPreviousSheetExis
 
     const dashboard = spreadsheet.getSheetByName('Dashboard')
 
-    if (currentYear > Number(dashboard.getRange('E2').getValue()))
+    if (currentYear > Number(dashboard.getRange('E2').getValue())) // The current year is not represented on the Dashboard, so add a column for it and make the relevant changes to formulas
     {
       const dashboard_lastRow = dashboard.getLastRow();
       dashboard.insertColumnBefore(5).getRange(2, 5, 2, 1).setValues([[currentYear], ['=SUM(E4:E' + dashboard_lastRow + ')']])
       const grandTotalRange = dashboard.getRange(4, 4, dashboard_lastRow - 3)
+      dashboard.getRange(1, 5, 1, 2).merge();
       grandTotalRange.setFormulas(grandTotalRange.getFormulas().map(formula => [formula[0].replace('F', 'E')]))
     }
 
@@ -271,8 +273,8 @@ function createChart()
     .setTransposeRowsAndColumns(false)
     .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
     .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.IGNORE_BOTH)
-    .setOption('title', customerValues[0])
-    .setOption('subtitle', 'Total: ' + customerValues[2])
+    .setOption('title', customerValues[0]) // Customer Name
+    .setOption('subtitle', 'Total: ' + customerValues[2]) // Customer Sales Totals
     .setOption('isStacked', 'false')
     .setOption('bubble.stroke', '#000000')
     .setOption('textStyle.color', '#000000')
@@ -367,6 +369,7 @@ function deleteSelectedCustomers()
 
   if (SpreadsheetApp.getActiveSheet().getSheetName() === 'Dashboard')
   {
+    // Reverse the active ranges because when deleting rows, you want to start from the bottom so that you don't have indexing issues
     SpreadsheetApp.getActiveRangeList().getRanges().reverse().map(range => { 
       if (range.getColumn() === 3 && range.getLastColumn() === 3 && range.getRow() > 3)
       {
@@ -374,7 +377,7 @@ function deleteSelectedCustomers()
           customerIndex = customerList.findIndex(customer => customer[1] === customerName[0]);
           sheetName = customerList[customerIndex][2]
           sheetNameSplit = sheetName.split(' - ')
-          customerList.splice(customerIndex, 1);
+          customerList.splice(customerIndex, 1); // Remove the customer
           customerList_LodgeAndCharterSS.splice(customerList_LodgeAndCharterSS.findIndex(customer => customer[1] === customerName[0]), 1);
           spreadsheet.deleteSheet(spreadsheet.getSheetByName(sheetName))
           spreadsheet.deleteSheet(spreadsheet.getSheetByName(sheetNameSplit[0] + ' CHART - ' + sheetNameSplit[1]))
@@ -406,6 +409,16 @@ function deleteSelectedCustomers()
 function isNotBlank(str)
 {
   return str !== ''
+}
+
+/**
+ * Thid function moves the active sheet to the first indext position.
+ * 
+ * @author Jarren Ralf
+ */
+function moveActiveSheetToFront()
+{
+  SpreadsheetApp.getActive().moveActiveSheet(1);
 }
 
 /**
@@ -659,17 +672,15 @@ function updateAllCharts()
     var REASONABLE_TIME_TO_WAIT = 30000; // Thirty seconds
     const spreadsheet = SpreadsheetApp.getActive()
     const sheets = spreadsheet.getSheets();
-    const dashboard = sheets.shift()
-    const numRows = dashboard.getLastRow() - 3
-    const totalYearlySalesPerCustomer = dashboard.getSheetValues(4, 3, numRows, 2).map(total => [total[0], twoDecimals(total[1])])
     const sheetNames = sheets.map(sheet => sheet.getSheetName().split(' - '));
     const numYears = new Date().getFullYear() - 2011;
-    const numCustomerSheets = sheetNames.length - numYears - 1
-    var cache = CacheService.getDocumentCache(), customerIndex = 0, chart, currentTime = 0;
-    var currentSheet = Number(cache.get('current_sheet'));
+    const numCustomerSheets = sheetNames.length - numYears - 1;
+    const CUST_NAME = 0, SALES_TOTAL = 2;
+    var cache = CacheService.getDocumentCache(), chart, chartTitleInfo, currentTime = 0;
+    var currentSheet = Number(cache.get('current_sheet')); // Retrieve the for-loop index from the cache
 
-    if (currentSheet === 0) // If the cache was null, set the initial sheet index to 3
-      currentSheet = 3;
+    if (currentSheet === 0) // If the cache was null, set the initial sheet index to 4
+      currentSheet = 4;
 
     // Create the spreadsheets, notice that the index varibale needs to be converted to a number since the Cache stores data as string values
     for (var sheet = currentSheet; sheet < numCustomerSheets; sheet = sheet + 2)
@@ -690,6 +701,7 @@ function updateAllCharts()
       else
       {
         spreadsheet.deleteSheet(sheets[sheet + 1]) // Delete the chart
+        chartTitleInfo = sheets[sheet].getRange(1, 2, 1, 3).getDisplayValues()[0];
 
         chart = sheets[sheet].newChart()
           .asColumnChart()
@@ -700,8 +712,8 @@ function updateAllCharts()
           .setTransposeRowsAndColumns(false)
           .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
           .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.IGNORE_BOTH)
-          .setOption('title', totalYearlySalesPerCustomer[customerIndex][0])
-          .setOption('subtitle', 'Total: $' + new Intl.NumberFormat().format(totalYearlySalesPerCustomer[customerIndex][1]))
+          .setOption('title', chartTitleInfo[CUST_NAME])
+          .setOption('subtitle', 'Total: ' + chartTitleInfo[SALES_TOTAL])
           .setOption('isStacked', 'false')
           .setOption('bubble.stroke', '#000000')
           .setOption('textStyle.color', '#000000')
@@ -728,7 +740,7 @@ function updateAllCharts()
 
     const salesDataSheet = spreadsheet.getSheetByName('Sales Data');
     const spreadsheetName = spreadsheet.getName();
-    ss.deleteSheet(ss.getSheetByName('ANNUAL ' + spreadsheetName + ' CHART')) // Delete previous sales chart
+    spreadsheet.deleteSheet(spreadsheet.getSheetByName('ANNUAL ' + spreadsheetName + ' CHART')) // Delete previous sales chart
 
     const annualSalesChart = salesDataSheet.newChart()
       .asColumnChart()
@@ -757,7 +769,7 @@ function updateAllCharts()
       .build();
 
     salesDataSheet.insertChart(annualSalesChart);
-    spreadsheet.moveChartToObjectSheet(annualSalesChart).activate().setName('ANNUAL ' + spreadsheetName + ' CHART')
+    spreadsheet.moveChartToObjectSheet(annualSalesChart).activate().setName('ANNUAL ' + spreadsheetName + ' CHART').setTabColor('#f1c232');
 
     const ss = SpreadsheetApp.openById('1xKw4GAtNbAsTEodCDmCMbPCbXUlK9OHv0rt5gYzqx9c') // The Lodge, Charter, & Guide Data spreadsheet
     const annualSalesDataSheet = ss.getSheetByName('Annual Sales Data');
@@ -790,7 +802,7 @@ function updateAllCharts()
       .build();
 
     annualSalesDataSheet.insertChart(annualSalesChart_BOTH);
-    spreadsheet.moveChartToObjectSheet(annualSalesChart_BOTH).activate().setName('ANNUAL SALES CHART')
+    ss.moveChartToObjectSheet(annualSalesChart_BOTH).activate().setName('ANNUAL SALES CHART').setTabColor('#f1c232');
   }
   catch (err)
   {
@@ -826,8 +838,9 @@ function updateAllCustomersSalesData(spreadsheet)
 
   const today = new Date();
   const currentYear = today.getFullYear();
-  const currentDate = today.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][today.getMonth()] + ' ' + currentYear;
-  const numYears = currentYear - 2012 + 1
+  const currentDate = (today.getDate() < 10) ? '0' + today.getDate() : today.getDate() + ' ' + 
+    ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][today.getMonth()] + ' ' + currentYear; // The current date is shown on the customer's data page
+  const numYears = currentYear - 2012 + 1;
   const sheets = spreadsheet.getSheets();
   const dashboard = sheets.shift()
   const sheetNames = sheets.map(sheet => sheet.getSheetName().split(' - '));
@@ -848,18 +861,18 @@ function updateAllCustomersSalesData(spreadsheet)
 
   chartData.reverse() 
 
-  for (var s = 3; s < numCustomerSheets; s = s + 2)
+  for (var s = 3; s < numCustomerSheets; s = s + 2) // Loop through all of the customer sheets
   {
     spreadsheet.toast((index + 1) + ': ' + sheetNames[s][0] + ' - ' + sheetNames[s][1], 'Updating...', 60)
     
     allYearsData = years.map((fullYearData, y) => {
-      data = fullYearData.filter(custNum => custNum[0].trim() === sheetNames[s][1])
+      data = fullYearData.filter(custNum => custNum[0].trim() === sheetNames[s][1]) // Retrieve just the customers data
       numItems = data.length;
 
       if (numItems !== 0)
       {
-        chartData[numYears - y - 1][1] = data[numItems - 1][5];
-        salesTotals[index][y] = data[numItems - 1][5]; 
+        chartData[numYears - y - 1][1] = data[numItems - 1][5]; // Fill in the chart data with the yearly totals
+        salesTotals[index][y] = data[numItems - 1][5]; // Fill in the the sales totals for the current customer for year y on the dashboard
         ((currentYear - y) == currentYear) ? 
           data.unshift(['', '', '', '', '01 Jan ' + currentYear, currentDate]) : 
           data.unshift(['', '', '', '', '01 Jan ' + (currentYear - y), '31 Dec ' + (currentYear - y)])
@@ -894,6 +907,7 @@ function updateAllCustomersSalesData(spreadsheet)
     sheets[s].getRangeList(yearRange).setFontWeight('bold').setNumberFormat('@') // The year
     sheets[s].getRangeList(totalRange).setBorder(true, false, true, false, false, false).setBackground('#c0c0c0').setFontWeight('bold') // The total quantity and amount
 
+    // Reset the variables
     yearRange.length = 0;
     totalRange.length = 0;
     hAlignments.length = 0;
@@ -905,6 +919,7 @@ function updateAllCustomersSalesData(spreadsheet)
   const yearlySales = range.setNumberFormat('$#,##0.00').setValues(salesTotals).activate().offset(-1, 0, 1, numYears).getDisplayValues()[0].reverse();
   const annualSalesData = [];
 
+  // Update the sales data for the annual chart
   if (spreadsheet.getName().split(' ', 1)[0] !== 'CHARTER')
   {
     var charterGuideSalesYearlyData = SpreadsheetApp.openById('1kKS6yazOEtCsH-QCLClUI_6NU47wHfRb8CIs-UTZa1U').getSheetByName('Sales Data').getDataRange().getDisplayValues();
