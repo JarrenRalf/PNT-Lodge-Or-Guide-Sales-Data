@@ -193,7 +193,7 @@ function configureYearlyCustomerItemData(values, fileName, doesPreviousSheetExis
           const dashboard_lastRow = dashboard.getLastRow();
           dashboard.insertColumnBefore(5).getRange(2, 5, 2, 1).setValues([[currentYear], ['=SUM(E4:E' + dashboard_lastRow + ')']])
           const grandTotalRange = dashboard.getRange(4, 4, dashboard_lastRow - 3)
-          dashboard.getRange(1, 5, 1, 2).merge();
+          dashboard.getRange(1, 5, 1, dashboard.getLastColumn() - 4).merge();
           grandTotalRange.setFormulas(grandTotalRange.getFormulas().map(formula => [formula[0].replace('F', 'E')]))
         }
 
@@ -243,7 +243,7 @@ function configureYearlyCustomerItemData(values, fileName, doesPreviousSheetExis
       const dashboard_lastRow = dashboard.getLastRow();
       dashboard.insertColumnBefore(5).getRange(2, 5, 2, 1).setValues([[currentYear], ['=SUM(E4:E' + dashboard_lastRow + ')']])
       const grandTotalRange = dashboard.getRange(4, 4, dashboard_lastRow - 3)
-      dashboard.getRange(1, 5, 1, 2).merge();
+      dashboard.getRange(1, 5, 1, dashboard.getLastColumn() - 4).merge();
       grandTotalRange.setFormulas(grandTotalRange.getFormulas().map(formula => [formula[0].replace('F', 'E')]))
     }
 
@@ -655,170 +655,164 @@ function twoDecimals(num)
 }
 
 /**
- * This function deletes and rebuilds all of the charts in the spreadsheet in order to update the subtitle of the graph, which is the total Sales for a particular customer.
- * This function also contains the feature that if runtime is going to exceed 6 minutes, the limit for google apps script, then the script creates a trigger that will re-run
- * this function a few minutes later. This function creates the spreadsheets in a for-loop and if runtime will exceed 6 minutes, it stores the current value of the loop's 
- * incrementing variable in Google's CacheService, which stores string data that will expire after 6 minutes. On rerun, the function can call on the cache and resume within
- * the for-loop where the script was last stopped.
+ * This function deletes and rebuilds all of the charts in a particular spreadsheet in order to update the subtitle of the graph, which is the total Sales for a particular customer.
+ * 
+ * @param   {Number}   currentSheet : The index of the current sheet which is used as the data source for the current chart being created.
+ * @param {Spreadsheet} spreadsheet : The active spreadsheet.
+ * @returns Whether the for-loop has concluded or not as well as the time the last iterate of the for-loop started plus the value or index of the iterate.
+ * @author Jarren Ralf
+ */
+function updateAllCharts(currentSheet, spreadsheet)
+{
+  const startTime = new Date(); // The start time of this function
+  const MAX_RUNNING_TIME = 300000; // Five minutes
+  const sheets = spreadsheet.getSheets();
+  const sheetNames = sheets.map(sheet => sheet.getSheetName().split(' - '));
+  const numYears = new Date().getFullYear() - 2011;
+  const numCustomerSheets = sheetNames.length - numYears - 1;
+  const CUST_NAME = 0, SALES_TOTAL = 2;
+  var chart, chartTitleInfo, currentTime = 0;
+
+  if (currentSheet === 0) // If the cache was null, set the initial sheet index to 4
+    currentSheet = 4;
+
+  // Create the spreadsheets, notice that the index varibale needs to be converted to a number since the Cache stores data as string values
+  for (var sheet = currentSheet; sheet < numCustomerSheets; sheet = sheet + 2)
+  {
+    currentTime = new Date().getTime();
+    
+    if (currentTime - startTime >= MAX_RUNNING_TIME) // If the function has been running for more than 5 minutes, then set the trigger to run this function again in a few minutes
+      return [sheet < numCustomerSheets, sheet, currentTime];
+    else
+    {
+      spreadsheet.deleteSheet(sheets[sheet + 1]); // Delete the chart
+      chartTitleInfo = sheets[sheet].getRange(1, 2, 1, 3).getDisplayValues()[0];
+
+      chart = sheets[sheet].newChart()
+        .asColumnChart()
+        .addRange(sheets[sheet].getRange(3, 5, numYears, 2))
+        .setNumHeaders(0)
+        .setXAxisTitle('Year')
+        .setYAxisTitle('Sales Total')
+        .setTransposeRowsAndColumns(false)
+        .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
+        .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.IGNORE_BOTH)
+        .setOption('title', chartTitleInfo[CUST_NAME])
+        .setOption('subtitle', 'Total: ' + chartTitleInfo[SALES_TOTAL])
+        .setOption('isStacked', 'false')
+        .setOption('bubble.stroke', '#000000')
+        .setOption('textStyle.color', '#000000')
+        .setOption('useFirstColumnAsDomain', true)
+        .setOption('titleTextStyle.color', '#757575')
+        .setOption('legend.textStyle.color', '#1a1a1a')
+        .setOption('subtitleTextStyle.color', '#999999')
+        .setOption('series', {0: {hasAnnotations: true, dataLabel: 'value'}})
+        .setOption('trendlines', {0: {lineWidth: 4, type: 'linear', color: '#6aa84f'}})
+        .setOption('hAxis', {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}})
+        .setOption('annotations', {domain: {textStyle: {color: '#808080'}}, total: {textStyle : {color: '#808080'}}})
+        .setOption('vAxes', {0: {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}, minorGridlines: {count: 2}}})
+        .setPosition(1, 1, 0, 0)
+        .build();
+
+      sheets[sheet].insertChart(chart);
+      spreadsheet.moveChartToObjectSheet(chart).setName(sheetNames[sheet][0] + ' CHART - ' + sheetNames[sheet][1]).setTabColor('#f1c232')
+    }
+  }
+
+  const salesDataSheet = spreadsheet.getSheetByName('Sales Data');
+  const spreadsheetName = spreadsheet.getName();
+  spreadsheet.deleteSheet(spreadsheet.getSheetByName('ANNUAL ' + spreadsheetName + ' CHART')); // Delete previous sales chart
+
+  const annualSalesChart = salesDataSheet.newChart()
+    .asColumnChart()
+    .addRange(salesDataSheet.getRange(4, 1, numYears, 2))
+    .setNumHeaders(0)
+    .setXAxisTitle('Year')
+    .setYAxisTitle('Sales Total')
+    .setTransposeRowsAndColumns(false)
+    .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
+    .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.IGNORE_BOTH)
+    .setOption('title', 'ANNUAL ' + spreadsheetName + ' DATA')
+    .setOption('subtitle', 'Total: ' + salesDataSheet.getRange(2, 2).getDisplayValue())
+    .setOption('isStacked', 'false')
+    .setOption('bubble.stroke', '#000000')
+    .setOption('textStyle.color', '#000000')
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('titleTextStyle.color', '#757575')
+    .setOption('legend.textStyle.color', '#1a1a1a')
+    .setOption('subtitleTextStyle.color', '#999999')
+    .setOption('series', {0: {hasAnnotations: true, dataLabel: 'value'}})
+    .setOption('trendlines', {0: {lineWidth: 4, type: 'linear', color: '#6aa84f'}})
+    .setOption('hAxis', {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}})
+    .setOption('annotations', {domain: {textStyle: {color: '#808080'}}, total: {textStyle : {color: '#808080'}}})
+    .setOption('vAxes', {0: {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}, minorGridlines: {count: 2}}})
+    .setPosition(1, 1, 0, 0)
+    .build();
+
+  salesDataSheet.insertChart(annualSalesChart);
+  const annualSalesChartID = spreadsheet.moveChartToObjectSheet(annualSalesChart).activate().setName('ANNUAL ' + spreadsheetName + ' CHART').setTabColor('#f1c232').getSheetId();
+  setSheetLinksOnDashboard(spreadsheet, annualSalesChartID)
+
+  const ss = SpreadsheetApp.openById('1xKw4GAtNbAsTEodCDmCMbPCbXUlK9OHv0rt5gYzqx9c') // The Lodge, Charter, & Guide Data spreadsheet
+  const annualSalesDataSheet = ss.getSheetByName('Annual Sales Data');
+  ss.deleteSheet(ss.getSheetByName('ANNUAL SALES CHART')); // Delete previous sales chart
+
+  const annualSalesChart_BOTH = annualSalesDataSheet.newChart()
+    .asColumnChart()
+    .addRange(annualSalesDataSheet.getRange(4, 1, numYears, 2))
+    .setNumHeaders(0)
+    .setXAxisTitle('Year')
+    .setYAxisTitle('Sales Total')
+    .setTransposeRowsAndColumns(false)
+    .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
+    .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.IGNORE_BOTH)
+    .setOption('title', 'Annual Sales Data')
+    .setOption('subtitle', 'Total: ' + annualSalesDataSheet.getRange(2, 2).getDisplayValue())
+    .setOption('isStacked', 'false')
+    .setOption('bubble.stroke', '#000000')
+    .setOption('textStyle.color', '#000000')
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('titleTextStyle.color', '#757575')
+    .setOption('legend.textStyle.color', '#1a1a1a')
+    .setOption('subtitleTextStyle.color', '#999999')
+    .setOption('series', {0: {hasAnnotations: true, dataLabel: 'value'}})
+    .setOption('trendlines', {0: {lineWidth: 4, type: 'linear', color: '#6aa84f'}})
+    .setOption('hAxis', {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}})
+    .setOption('annotations', {domain: {textStyle: {color: '#808080'}}, total: {textStyle : {color: '#808080'}}})
+    .setOption('vAxes', {0: {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}, minorGridlines: {count: 2}}})
+    .setPosition(1, 1, 0, 0)
+    .build();
+
+  annualSalesDataSheet.insertChart(annualSalesChart_BOTH);
+  ss.moveChartToObjectSheet(annualSalesChart_BOTH).activate().setName('ANNUAL SALES CHART').setTabColor('#f1c232');
+
+  return [sheet < numCustomerSheets, sheet, currentTime];
+}
+
+/**
+ * This function updates the charts on the LODGE SALES spreadsheet by first deleting them and rebuilding them. This function also contains the feature that if 
+ * runtime is going to exceed 6 minutes, the limit for google apps script, then the script creates a trigger that will re-run this function a few minutes later. This 
+ * function creates the spreadsheets in a for-loop and if runtime will exceed 6 minutes, it stores the current value of the loop's incrementing variable in Google's 
+ * CacheService, which stores string data that will expire after 6 minutes. On rerun, the function can call on the cache and resume within the for-loop where the script
+ * was last stopped.
  * 
  * @author Jarren Ralf
  */
-function updateAllCharts()
+function updateAllCharts_Lodge()
 {
-  try
+  var cache = CacheService.getDocumentCache();
+  var currentSheet = Number(cache.get('current_sheet_lodge'));
+  var [isIncomplete, sheetIndex, currentTime] = updateAllCharts(currentSheet, SpreadsheetApp.getActive())
+
+  if (isIncomplete)
   {
-    const startTime = new Date(); // The start time of this function
-    const MAX_RUNNING_TIME = 330000; // Five minutes thirty seconds
-    var REASONABLE_TIME_TO_WAIT = 30000; // Thirty seconds
-    const spreadsheet = SpreadsheetApp.getActive()
-    const sheets = spreadsheet.getSheets();
-    const sheetNames = sheets.map(sheet => sheet.getSheetName().split(' - '));
-    const numYears = new Date().getFullYear() - 2011;
-    const numCustomerSheets = sheetNames.length - numYears - 1;
-    const CUST_NAME = 0, SALES_TOTAL = 2;
-    var cache = CacheService.getDocumentCache(), chart, chartTitleInfo, currentTime = 0;
-    var currentSheet = Number(cache.get('current_sheet')); // Retrieve the for-loop index from the cache
+    const REASONABLE_TIME_TO_WAIT = 60000; // Thirty seconds
+    cache.put('current_sheet_lodge', sheetIndex.toString()); // Store the indexing variable
+    var triggerDate = new Date(currentTime + REASONABLE_TIME_TO_WAIT); // Set a trigger for a point in the future
+    Logger.log('Next Trigger will run at:')
+    Logger.log(triggerDate)
 
-    if (currentSheet === 0) // If the cache was null, set the initial sheet index to 4
-      currentSheet = 4;
-
-    // Create the spreadsheets, notice that the index varibale needs to be converted to a number since the Cache stores data as string values
-    for (var sheet = currentSheet; sheet < numCustomerSheets; sheet = sheet + 2)
-    {
-      currentTime = new Date().getTime();
-      
-      if (currentTime - startTime >= MAX_RUNNING_TIME) // If the function has been running for more than 5 minutes, then set the trigger to run this function again in a few minutes
-      {
-        cache.put('current_sheet', sheet.toString()); // Store the indexing variable
-
-        var triggerDate = new Date(currentTime + REASONABLE_TIME_TO_WAIT); // Set a trigger for a point in the future
-        Logger.log('Next Trigger will run at:')
-        Logger.log(triggerDate)
-
-        ScriptApp.newTrigger("updateAllCharts").timeBased().at(triggerDate).create();
-        break;
-      }
-      else
-      {
-        spreadsheet.deleteSheet(sheets[sheet + 1]) // Delete the chart
-        chartTitleInfo = sheets[sheet].getRange(1, 2, 1, 3).getDisplayValues()[0];
-
-        chart = sheets[sheet].newChart()
-          .asColumnChart()
-          .addRange(sheets[sheet].getRange(3, 5, numYears, 2))
-          .setNumHeaders(0)
-          .setXAxisTitle('Year')
-          .setYAxisTitle('Sales Total')
-          .setTransposeRowsAndColumns(false)
-          .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
-          .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.IGNORE_BOTH)
-          .setOption('title', chartTitleInfo[CUST_NAME])
-          .setOption('subtitle', 'Total: ' + chartTitleInfo[SALES_TOTAL])
-          .setOption('isStacked', 'false')
-          .setOption('bubble.stroke', '#000000')
-          .setOption('textStyle.color', '#000000')
-          .setOption('useFirstColumnAsDomain', true)
-          .setOption('titleTextStyle.color', '#757575')
-          .setOption('legend.textStyle.color', '#1a1a1a')
-          .setOption('subtitleTextStyle.color', '#999999')
-          .setOption('series', {0: {hasAnnotations: true, dataLabel: 'value'}})
-          .setOption('trendlines', {0: {lineWidth: 4, type: 'linear', color: '#6aa84f'}})
-          .setOption('hAxis', {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}})
-          .setOption('annotations', {domain: {textStyle: {color: '#808080'}}, total: {textStyle : {color: '#808080'}}})
-          .setOption('vAxes', {0: {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}, minorGridlines: {count: 2}}})
-          .setPosition(1, 1, 0, 0)
-          .build();
-
-        sheets[sheet].insertChart(chart);
-        spreadsheet.moveChartToObjectSheet(chart).setName(sheetNames[sheet][0] + ' CHART - ' + sheetNames[sheet][1]).getSheetId()
-        customerIndex++;
-      }
-    }
-
-    if (sheet === numCustomerSheets) // The total number of spreadsheets have been created
-      setSheetLinksOnDashboard()
-
-    const salesDataSheet = spreadsheet.getSheetByName('Sales Data');
-    const spreadsheetName = spreadsheet.getName();
-    spreadsheet.deleteSheet(spreadsheet.getSheetByName('ANNUAL ' + spreadsheetName + ' CHART')) // Delete previous sales chart
-
-    const annualSalesChart = salesDataSheet.newChart()
-      .asColumnChart()
-      .addRange(salesDataSheet.getRange(4, 1, numYears, 2))
-      .setNumHeaders(0)
-      .setXAxisTitle('Year')
-      .setYAxisTitle('Sales Total')
-      .setTransposeRowsAndColumns(false)
-      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
-      .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.IGNORE_BOTH)
-      .setOption('title', 'ANNUAL ' + spreadsheetName + ' DATA')
-      .setOption('subtitle', 'Total: ' + salesDataSheet.getRange(2, 2).getDisplayValue())
-      .setOption('isStacked', 'false')
-      .setOption('bubble.stroke', '#000000')
-      .setOption('textStyle.color', '#000000')
-      .setOption('useFirstColumnAsDomain', true)
-      .setOption('titleTextStyle.color', '#757575')
-      .setOption('legend.textStyle.color', '#1a1a1a')
-      .setOption('subtitleTextStyle.color', '#999999')
-      .setOption('series', {0: {hasAnnotations: true, dataLabel: 'value'}})
-      .setOption('trendlines', {0: {lineWidth: 4, type: 'linear', color: '#6aa84f'}})
-      .setOption('hAxis', {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}})
-      .setOption('annotations', {domain: {textStyle: {color: '#808080'}}, total: {textStyle : {color: '#808080'}}})
-      .setOption('vAxes', {0: {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}, minorGridlines: {count: 2}}})
-      .setPosition(1, 1, 0, 0)
-      .build();
-
-    salesDataSheet.insertChart(annualSalesChart);
-    spreadsheet.moveChartToObjectSheet(annualSalesChart).activate().setName('ANNUAL ' + spreadsheetName + ' CHART').setTabColor('#f1c232');
-
-    const ss = SpreadsheetApp.openById('1xKw4GAtNbAsTEodCDmCMbPCbXUlK9OHv0rt5gYzqx9c') // The Lodge, Charter, & Guide Data spreadsheet
-    const annualSalesDataSheet = ss.getSheetByName('Annual Sales Data');
-    ss.deleteSheet(ss.getSheetByName('ANNUAL SALES CHART')) // Delete previous sales chart
-
-    const annualSalesChart_BOTH = annualSalesDataSheet.newChart()
-      .asColumnChart()
-      .addRange(annualSalesDataSheet.getRange(4, 1, numYears, 2))
-      .setNumHeaders(0)
-      .setXAxisTitle('Year')
-      .setYAxisTitle('Sales Total')
-      .setTransposeRowsAndColumns(false)
-      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
-      .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.IGNORE_BOTH)
-      .setOption('title', 'Annual Sales Data')
-      .setOption('subtitle', 'Total: ' + annualSalesDataSheet.getRange(2, 2).getDisplayValue())
-      .setOption('isStacked', 'false')
-      .setOption('bubble.stroke', '#000000')
-      .setOption('textStyle.color', '#000000')
-      .setOption('useFirstColumnAsDomain', true)
-      .setOption('titleTextStyle.color', '#757575')
-      .setOption('legend.textStyle.color', '#1a1a1a')
-      .setOption('subtitleTextStyle.color', '#999999')
-      .setOption('series', {0: {hasAnnotations: true, dataLabel: 'value'}})
-      .setOption('trendlines', {0: {lineWidth: 4, type: 'linear', color: '#6aa84f'}})
-      .setOption('hAxis', {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}})
-      .setOption('annotations', {domain: {textStyle: {color: '#808080'}}, total: {textStyle : {color: '#808080'}}})
-      .setOption('vAxes', {0: {textStyle: {color: '#000000'}, titleTextStyle: {color: '#000000'}, minorGridlines: {count: 2}}})
-      .setPosition(1, 1, 0, 0)
-      .build();
-
-    annualSalesDataSheet.insertChart(annualSalesChart_BOTH);
-    ss.moveChartToObjectSheet(annualSalesChart_BOTH).activate().setName('ANNUAL SALES CHART').setTabColor('#f1c232');
-  }
-  catch (err)
-  {
-    var error = err['stack'];
-    Logger.log(error)
-
-    if (sheet !== numCustomerSheets)// If there are still more spreadsheets to create
-    {
-      var triggerDate = new Date(currentTime + REASONABLE_TIME_TO_WAIT); 
-      
-      Logger.log('Next Trigger will run at:')
-      Logger.log(triggerDate)
-
-      ScriptApp.newTrigger("updateAllCharts").timeBased().at(triggerDate).create(); // Create a new trigger and try running the function again
-      cache.put('current_sheet', sheet.toString()); // Store the current position of the for-loop iterate
-    }
+    ScriptApp.newTrigger("updateAllCharts_Lodge").timeBased().at(triggerDate).create();
   }
 }
 
@@ -953,6 +947,6 @@ function updateAllCustomersSalesData(spreadsheet)
   var triggerDate = new Date(new Date().getTime() + 30000); // Set a trigger for a point in the future
   Logger.log('All of the charts will begin updating at:')
   Logger.log(triggerDate)      
-  ScriptApp.newTrigger("updateAllCharts").timeBased().at(triggerDate).create();
+  ScriptApp.newTrigger("updateAllCharts_Lodge").timeBased().at(triggerDate).create();
   spreadsheet.toast('', 'Full Data Update: COMPLETE', 60)
 }
