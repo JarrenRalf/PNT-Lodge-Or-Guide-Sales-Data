@@ -293,8 +293,13 @@ function createChart()
   activeSheet.insertChart(chart);
   const sheetNameSplit = activeSheet.getSheetName().split(' - ');
   const sheetName_CHART = sheetNameSplit[0] + ' CHART - ' + sheetNameSplit[1];
-  spreadsheet.deleteSheet(spreadsheet.getSheetByName(sheetName_CHART))
-  spreadsheet.moveChartToObjectSheet(chart).activate().setName(sheetNameSplit[0] + ' CHART - ' + sheetNameSplit[1])
+  const chartSheet = spreadsheet.getSheetByName(sheetName_CHART);
+
+  // If the chart is present, then delete and replace it  
+  if (chartSheet != null)
+    spreadsheet.deleteSheet(spreadsheet.getSheetByName(sheetName_CHART))
+
+  spreadsheet.moveChartToObjectSheet(chart).activate().setName(sheetNameSplit[0] + ' CHART - ' + sheetNameSplit[1]).setTabColor('#f1c232')
 }
 
 /**
